@@ -5,7 +5,6 @@ using namespace std;
 
 //--------------------------------------------------------------------------------
 // Table creation statements
-// TODO: Change STRING to TEXT
 //--------------------------------------------------------------------------------
 #define ITEM_DDL     "CREATE TABLE IF NOT EXISTS Item("\
                         "ItemID INTEGER PRIMARY KEY, Title TEXT, Content TEXT);"
@@ -139,6 +138,7 @@ void SQLite3_Serializer::write(const Item& record)
 //--------------------------------------------------------------------------------
 // Read all items associated with the given tags into th output parameter.
 //--------------------------------------------------------------------------------
+#include <iostream>
 void SQLite3_Serializer::read(const vector<string>& tags, 
                               vector<Item*>& out_items)
     throw(runtime_error) {
@@ -146,15 +146,15 @@ void SQLite3_Serializer::read(const vector<string>& tags,
     // TODO: Add option for matching all or one of the tags
     // Select all items matching the tags
     m_query.str("");
-    m_query << "SELECT Title, Content FROM Item "
+    m_query << "SELECT DISTINCT Title, Content FROM Item "
                "JOIN ItemTag "
                     "ON Item.ItemID = ItemTag.ItemID "
-               "WHERE ItemTag.TagID = "
+               "WHERE ItemTag.TagID IN "
                     "(SELECT TagID FROM Tag WHERE Tag.Title = ";
 
     for (size_t i = 0; i < tags.size(); ++i) {
         m_query << "'" << tags[i] << "'";
-        m_query << (i + 1 == tags.size() ? ");" : "OR Tag.Title = ");
+        m_query << (i + 1 == tags.size() ? ");" : " OR Tag.Title = ");
     }
 
     prepare();
