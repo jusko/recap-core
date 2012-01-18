@@ -138,7 +138,6 @@ void SQLite3_Serializer::write(const Item& record)
 //--------------------------------------------------------------------------------
 // Read all items associated with the given tags into th output parameter.
 //--------------------------------------------------------------------------------
-#include <iostream>
 void SQLite3_Serializer::read(const vector<string>& tags, 
                               vector<Item*>& out_items)
     throw(runtime_error) {
