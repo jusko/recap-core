@@ -7,6 +7,7 @@
 // Core data type. 
 //------------------------------------------------------------------------------
 struct Item {
+    int id;
     std::string title;
     std::string content;
     std::vector<std::string> tags;
@@ -41,5 +42,12 @@ class Serializer {
 
             throw(std::runtime_error) = 0;
 
+        //---------------------------------------------------------------------
+        // @param tags Out vector of tag strings
+        // @post  All existing tags are loaded into the out vector.
+        // @throw If errors occur reading the tags.
+        //---------------------------------------------------------------------
+        virtual void tags(std::vector<std::string>& tags) 
+            throw(std::runtime_error) = 0;
 };
 #endif

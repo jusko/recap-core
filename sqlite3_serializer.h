@@ -1,5 +1,9 @@
+#ifndef SQLITE3_SERIALIZER_H
+#define SQLITE3_SERIALIZER_H
+
 #include "recap.h"
 #include <sstream>
+#include <cstdarg>
 struct sqlite3;
 struct sqlite3_stmt;
 
@@ -40,11 +44,19 @@ class SQLite3_Serializer : public Serializer {
                           std::vector<Item*>& items) 
 
             throw(std::runtime_error);
+        
+        //---------------------------------------------------------------------
+        // @param tags Out vector of tag strings
+        // @post  All tags stored in the DB are loaded into the out vector.
+        // @throw If errors occur querying the DB.
+        //---------------------------------------------------------------------
+        virtual void tags(std::vector<std::string>& tags) 
+            throw(std::runtime_error);
 
     private:
-        void exec()    throw(std::runtime_error);
-        void prepare() throw(std::runtime_error);
-        int  step()    throw(std::runtime_error);
+        void exec()            throw(std::runtime_error);
+        void prepare(int, ...) throw(std::runtime_error);
+        int  step()            throw(std::runtime_error);
 
         sqlite3*      m_db;
         sqlite3_stmt* m_statement;
@@ -52,3 +64,5 @@ class SQLite3_Serializer : public Serializer {
 
         std::stringstream  m_query;
 };
+
+#endif 

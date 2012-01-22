@@ -16,7 +16,8 @@ void parse_tags(const char* in_tags, vector<string>& out_list);
 // Main function
 //------------------------------------------------------------------------------
 int main(int argc, char** argv) {
-    if (argc < 4 || (strcmp(argv[2], "-c") && strcmp(argv[2], "-r"))) {
+    if (argc < 3 || (strcmp(argv[2], "-c") && 
+                     strcmp(argv[2], "-r") && strcmp(argv[2], "-t"))) {
         usage(argv);
         return 1;
     }
@@ -26,7 +27,14 @@ int main(int argc, char** argv) {
     try {
         Serializer* sr = new SQLite3_Serializer(argv[1]);
 
-        if (strcmp(argv[2], "-c") == 0) {
+        if (strcmp(argv[2], "-t") == 0) {
+            sr->tags(tags);
+            cout << "---Tags---" << endl;
+            for (size_t i = 0; i < tags.size(); ++i) {
+                cout << tags[i] << endl;
+            }
+        }
+        else if (strcmp(argv[2], "-c") == 0) {
             if (argc != 6) {
                 usage(argv);
                 return 1;
@@ -34,6 +42,7 @@ int main(int argc, char** argv) {
             parse_tags(argv[5], tags);
 
             Item record = {
+                0,
                 argv[3],
                 argv[4],
                 tags
@@ -90,7 +99,7 @@ void cleanup(vector<Item*>& items) {
 void usage(char** argv) {
     cout << "Usage: " << argv[0] 
          << " DATABASE [-c 'TITLE' 'CONTENT' 'TAG1, TAG2, ...'"
-            " | -r 'TAG1, TAG2, ...']"
+            " | -r 'TAG1, TAG2, ...'] | -t"
          << endl;
 }
 

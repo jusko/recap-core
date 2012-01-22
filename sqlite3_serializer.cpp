@@ -1,6 +1,7 @@
 #include "sqlite3_serializer.h"
 #include <sqlite3.h>
 #include <string>
+#include <cstring>
 using namespace std;
 
 //--------------------------------------------------------------------------------
@@ -20,24 +21,14 @@ using namespace std;
 #define CREATE_SCHEMA_DDL ITEM_DDL TAG_DDL ITEM_TAG_DDL "PRAGMA foreign_keys = ON;"
 
 //--------------------------------------------------------------------------------
-// Convenience function for executing and checking SQL queries
-// @pre m_query is set with a valid SQL query
-// TODO: Consider removing in favour of other helpers
-//--------------------------------------------------------------------------------
-inline void SQLite3_Serializer::exec()
-    throw(runtime_error) {
-
-    if (sqlite3_exec(m_db, m_query.str().c_str(), 0, 0, &m_error_msg) != SQLITE_OK) {
-        throw runtime_error(m_error_msg);
-    }
-}
-
-//--------------------------------------------------------------------------------
-// Convenience function for preparing SQL statements
-// @pre  m_sql is set with a valid SQL query
+// Convenience function for preparing SQL statements. Binds the values given
+// as varargs to the SQL statement as SQL parameters. 
+// @pre  m_sql is set with a valid SQL query and all varargs are of type const char*
 // @post m_statement is prepared with a binary SQL statement
+// @param count The number of varargs received
+// TODO: Update to use variadic template args (to unpack vector params in read()).
 //--------------------------------------------------------------------------------
-inline void SQLite3_Serializer::prepare() 
+inline void SQLite3_Serializer::prepare(int count, ...) 
     throw(runtime_error) {
 
     if (sqlite3_prepare_v2(
@@ -49,6 +40,18 @@ inline void SQLite3_Serializer::prepare()
 
         throw runtime_error(sqlite3_errmsg(m_db));
     }
+    va_list vargs;
+    va_start(vargs, count);
+    for (int i = 0; i < count; ++i) {
+        const char* sql_param = va_arg(vargs, const char*);
+        sqlite3_bind_text(m_statement, 
+            i + 1, 
+            sql_param,
+            strlen(sql_param),
+            SQLITE_STATIC
+        );
+    }
+    va_end(vargs);
 }
 
 //--------------------------------------------------------------------------------
@@ -79,7 +82,8 @@ SQLite3_Serializer::SQLite3_Serializer(const char* db_spec)
     if ((sqlite3_open(db_spec, &m_db) != SQLITE_OK)) {
         throw runtime_error(string(sqlite3_errmsg(m_db)));
     }
-    exec();
+    prepare(0);
+    step();
 }
 
 //--------------------------------------------------------------------------------
@@ -101,10 +105,9 @@ void SQLite3_Serializer::write(const Item& record)
     throw(runtime_error) {
 
     // First insert the Item and hold onto its ID for the ItemTag insert
-    m_query.str("");
-    m_query << "INSERT INTO Item(Title, Content) VALUES('" << record.title << "', '" 
-                                                           << record.content << "')";
-    exec();
+    m_query.str("INSERT INTO Item(Title, Content) VALUES(?, ?);");
+    prepare(2, record.title.c_str(), record.content.c_str());
+    step();
     sqlite3_int64 item_id = sqlite3_last_insert_rowid(m_db);
 
     // Then, for each tag, get its ID if it already exists, else add it and hold 
@@ -113,35 +116,36 @@ void SQLite3_Serializer::write(const Item& record)
     for (size_t i = 0; i < record.tags.size(); ++i) {
         const string& current_tag = record.tags[i];
 
-        m_query.str("");
-        m_query << "SELECT TagId from Tag where Title = '" << current_tag  << "';";
-
-        prepare();
-
+        m_query.str("SELECT TagId from Tag where Title = ?;");
+        prepare(1, current_tag.c_str());
         step();
 
         // TODO: downcase all tag entries
         int tag_id = sqlite3_column_int(m_statement, 0);
+        m_query.str( "INSERT INTO Tag(Title) VALUES(?);");
         if (tag_id == 0) {
-            m_query.str("");
-            m_query << "INSERT INTO Tag(Title) VALUES('" << current_tag << "');";
-            exec();
+            prepare(1, current_tag.c_str());
+            step();
             tag_id = sqlite3_last_insert_rowid(m_db);
         }
         m_query.str("");
         m_query << "INSERT INTO ItemTag(ItemID, TagID) VALUES(" << item_id << "," 
                                                                 << tag_id << ");";
-        exec();
+        prepare(0);
+        step();
     }
 }
 
 //--------------------------------------------------------------------------------
-// Read all items associated with the given tags into th output parameter.
+// Read all items associated with the given tags into the output parameter.
 //--------------------------------------------------------------------------------
 void SQLite3_Serializer::read(const vector<string>& tags, 
                               vector<Item*>& out_items)
     throw(runtime_error) {
 
+    if (tags.empty()) {
+        return;
+    }
     // TODO: Add option for matching all or one of the tags
     // Select all items matching the tags
     m_query.str("");
@@ -152,11 +156,24 @@ void SQLite3_Serializer::read(const vector<string>& tags,
                     "(SELECT TagID FROM Tag WHERE Tag.Title = ";
 
     for (size_t i = 0; i < tags.size(); ++i) {
-        m_query << "'" << tags[i] << "'";
+        m_query << "?";
         m_query << (i + 1 == tags.size() ? ");" : " OR Tag.Title = ");
     }
+    //------
+    // HACK: This isn't necessary with C++11x variadic template args
+    //       so refine it during the sweep.
+    prepare(0);
+    for (size_t i = 0; i < tags.size(); ++i) {
+        sqlite3_bind_text(
+            m_statement, 
+            i + 1, 
+            tags[i].c_str(),
+            tags[i].size(), 
+            SQLITE_STATIC
+        );
+    }
+    //------
 
-    prepare();
     while (step() == SQLITE_ROW) {
         out_items.push_back(new Item);
         Item& item = *out_items.back();
@@ -170,19 +187,34 @@ void SQLite3_Serializer::read(const vector<string>& tags,
 
     // Select the tags for each item
     // TODO: Evaluate inefficiency of this and redo if needed
-    for (size_t i = 0; i < out_items.size(); ++i) {
-        m_query.str("");
-        m_query << "SELECT Title from Tag "
-                   "JOIN ItemTag ON Tag.TagID = ItemTag.TagID "
-                   "WHERE ItemTag.ItemID = "
-                   "(SELECT ItemID from Item WHERE Item.Title = '"
-                << out_items[i]->title << "');";
+    m_query.str("");
+    m_query << "SELECT Title from Tag "
+               "JOIN ItemTag ON Tag.TagID = ItemTag.TagID "
+               "WHERE ItemTag.ItemID = "
+               "(SELECT ItemID from Item WHERE Item.Title = ?);";
 
-        prepare();
+    for (size_t i = 0; i < out_items.size(); ++i) {
+        prepare(1, out_items[i]->title.c_str());
         while (step() == SQLITE_ROW) {
             out_items[i]->tags.push_back(
                 reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 0))
             );
         }
+    }
+}
+
+//--------------------------------------------------------------------------------
+// Read all tags in the Tag table into the output parameter.
+//--------------------------------------------------------------------------------
+void SQLite3_Serializer::tags(vector<string>& out_tags) 
+    throw(runtime_error) {
+
+    m_query.str("SELECT Title from Tag;");
+    prepare(0);
+    while (step() == SQLITE_ROW) {
+        out_tags.push_back(
+            reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 0))
+        );
+
     }
 }
