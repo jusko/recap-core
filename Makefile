@@ -1,9 +1,10 @@
 CC			= g++
 CFLAGS		= -Wall 
+INCLUDES    = -Isrc
 LIBS		= -lsqlite3
 OBJS		= sqlite3_serializer.o
 TARGET		= librecapcore.so
-TEST_TARGET = recap_test
+TEST_TARGET = core-tester
 
 ifeq ($(build),debug) 
 	CFLAGS += -ggdb -O1
@@ -14,8 +15,8 @@ endif
 $(TARGET):$(OBJS)
 	$(CC) $(CFLAGS) -shared -o$@ $^ $(LIBS)
 
-sqlite3_serializer.o:sqlite3_serializer.cpp
-	$(CC) -c $(CFLAGS) -fPIC -o$@ $<
+sqlite3_serializer.o:src/sqlite3_serializer.cpp
+	$(CC) $(INCLUDES) -c $(CFLAGS) -fPIC -o$@ $<
 
 clean:
 	rm -f $(OBJS)
@@ -23,5 +24,5 @@ clean:
 distclean:clean
 	rm -f $(TARGET) $(TEST_TARGET)
 
-test:$(TARGET) tester.cpp
-	$(CC) $(CFLAGS) tester.cpp -o$(TEST_TARGET) -L./ -lrecapcore
+test:$(TARGET) src/tester.cpp
+	$(CC) $(INCLUDES) $(CFLAGS) src/tester.cpp -o$(TEST_TARGET) -L./ -lrecapcore
