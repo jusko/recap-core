@@ -18,7 +18,7 @@ using namespace std;
                         "FOREIGN KEY(ItemID) REFERENCES Item(ItemID), "\
                         "FOREIGN KEY(TagID) REFERENCES Tag(TagID));"
 
-#define CREATE_SCHEMA_DDL ITEM_DDL TAG_DDL ITEM_TAG_DDL "PRAGMA foreign_keys = ON;"
+#define FKEYS_ON     "PRAGMA foreign_keys = ON;"
 
 //--------------------------------------------------------------------------------
 // Convenience function for preparing SQL statements. Binds the values given
@@ -77,11 +77,24 @@ SQLite3_Serializer::SQLite3_Serializer(const char* db_spec)
     throw(runtime_error) : m_db(0),
                            m_statement(0),
                            m_error_msg(0),
-                           m_query(CREATE_SCHEMA_DDL) {
+                           m_query("") {
 
     if ((sqlite3_open(db_spec, &m_db) != SQLITE_OK)) {
         throw runtime_error(string(sqlite3_errmsg(m_db)));
     }
+    m_query.str(ITEM_DDL);
+    prepare(0);
+    step();
+
+    m_query.str(TAG_DDL);
+    prepare(0);
+    step();
+
+    m_query.str(ITEM_TAG_DDL);
+    prepare(0);
+    step();
+
+    m_query.str(FKEYS_ON);
     prepare(0);
     step();
 }
@@ -113,10 +126,9 @@ void SQLite3_Serializer::write(const Item& record)
     // Then, for each tag, get its ID if it already exists, else add it and hold 
     // on to the new ID. After that, insert an ItemTag with the corresponding
     // ItemID and TagID.
+    m_query.str("SELECT TagId from Tag where Title = ?;");
     for (size_t i = 0; i < record.tags.size(); ++i) {
         const string& current_tag = record.tags[i];
-
-        m_query.str("SELECT TagId from Tag where Title = ?;");
         prepare(1, current_tag.c_str());
         step();
 

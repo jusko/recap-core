@@ -54,7 +54,6 @@ class SQLite3_Serializer : public Serializer {
             throw(std::runtime_error);
 
     private:
-        void exec()            throw(std::runtime_error);
         void prepare(int, ...) throw(std::runtime_error);
         int  step()            throw(std::runtime_error);
 
