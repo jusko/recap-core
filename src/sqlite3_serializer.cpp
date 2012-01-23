@@ -126,8 +126,8 @@ void SQLite3_Serializer::write(const Item& record)
     // Then, for each tag, get its ID if it already exists, else add it and hold 
     // on to the new ID. After that, insert an ItemTag with the corresponding
     // ItemID and TagID.
-    m_query.str("SELECT TagId from Tag where Title = ?;");
     for (size_t i = 0; i < record.tags.size(); ++i) {
+        m_query.str("SELECT TagId from Tag where Title = ?;");
         const string& current_tag = record.tags[i];
         prepare(1, current_tag.c_str());
         step();
