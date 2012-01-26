@@ -233,19 +233,14 @@ void SQLite3_Serializer::delete_itemtags(const Item& record)
     prepare(0);
 
     while (step() == SQLITE_ROW) {
-        cout << "col: " << sqlite3_column_int(m_statement, 1) << "\ttag: " << 
-                reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 0)) << endl;
-
         if (tag_set.find(
                 reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 0))
             ) == tag_set.end()) {
-            cout << "FOUND" << endl;
 
             delete_cache.push_back(sqlite3_column_int(m_statement, 1));
         }
     }
     for (size_t i = 0; i < delete_cache.size(); ++i) {
-        cout << "Delete ID: " << delete_cache[i] << endl;
         m_query.str("");
         m_query << "DELETE FROM ItemTag WHERE ID = " << delete_cache[i];
         prepare(0);
