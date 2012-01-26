@@ -44,6 +44,15 @@ class Serializer {
             throw(std::runtime_error) = 0;
 
         //---------------------------------------------------------------------
+        // @param i The item to be deleted
+        // @pre     The item is stored.
+        // @post    The item is considered "trash" and will not be read in
+        //          future calls to read().
+        //---------------------------------------------------------------------
+        virtual void trash(const Item& i) 
+            throw(std::runtime_error) = 0;
+
+        //---------------------------------------------------------------------
         // @param tags Out vector of tag strings
         // @post  All existing tags are loaded into the out vector.
         // @throw If errors occur reading the tags.

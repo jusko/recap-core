@@ -9,7 +9,8 @@ using namespace std;
 // Table creation statements
 //--------------------------------------------------------------------------------
 #define ITEM_DDL     "CREATE TABLE IF NOT EXISTS Item("\
-                        "ItemID INTEGER PRIMARY KEY, Title TEXT, Content TEXT);"
+                        "ItemID INTEGER PRIMARY KEY, Title TEXT, Content TEXT, "\
+                        "Timestamp TEXT);"
 
 #define TAG_DDL      "CREATE TABLE IF NOT EXISTS Tag("\
                         "TagID INTEGER PRIMARY KEY, Title TEXT UNIQUE);"
@@ -19,7 +20,25 @@ using namespace std;
                         "FOREIGN KEY(ItemID) REFERENCES Item(ItemID), "\
                         "FOREIGN KEY(TagID) REFERENCES Tag(TagID));"
 
+#define TRASH_DDL    "CREATE TABLE IF NOT EXISTS TrashItem("\
+                        "ItemID INTEGER PRIMARY KEY, Title TEXT, Content TEXT, "\
+                        "Tags TEXT, Timestamp TEXT);"
+
 #define FKEYS_ON     "PRAGMA foreign_keys = ON;"
+
+#define SQLITE_DATE  "datetime('now', 'localtime')"
+
+//--------------------------------------------------------------------------------
+// Stateless utility functions
+//--------------------------------------------------------------------------------
+const char* tags2tag_str(const vector<string>& tags) {
+    static string rv; rv.clear();
+    for (size_t i = 0; i < tags.size(); ++i) {
+        rv += tags[i];
+        if (i + 1 < tags.size()) rv += " ";
+    }
+    return rv.c_str();
+}
 
 //--------------------------------------------------------------------------------
 // Convenience function for preparing SQL statements. Binds the values given
@@ -72,6 +91,42 @@ inline int SQLite3_Serializer::step()
 }
 
 //--------------------------------------------------------------------------------
+// Convenience function for executing a simple query.
+// @param query A non parameterised valid SQL statement.
+// @post  m_statement can be queried for results of the query.
+//--------------------------------------------------------------------------------
+inline void SQLite3_Serializer::exec(const char* query)
+    throw(std::runtime_error) {
+
+    m_query.str(query);
+    prepare(0);
+    step();
+}
+
+//--------------------------------------------------------------------------------
+// Starts an SQL transaction.
+// @post Any further calls to prepare() and step() form part of the currently
+//       active transaction.
+// @note Nested transaction are not supported.
+// @note All calls to this must be matched by a call to end_transaction();
+//--------------------------------------------------------------------------------
+inline void SQLite3_Serializer::begin_transaction()
+    throw(std::runtime_error) {
+
+        exec("BEGIN TRANSACTION;");
+}
+
+//--------------------------------------------------------------------------------
+// Ends an SQL transaction
+// @post All statements to the previous call to begin_transaction() are committed.
+//--------------------------------------------------------------------------------
+inline void SQLite3_Serializer::end_transaction()
+    throw(std::runtime_error) {
+
+        exec("COMMIT TRANSACTION;");
+}
+
+//--------------------------------------------------------------------------------
 // Ctor: Initialises the database connection and creates the schema if need be.
 //--------------------------------------------------------------------------------
 SQLite3_Serializer::SQLite3_Serializer(const char* db_spec) 
@@ -83,21 +138,13 @@ SQLite3_Serializer::SQLite3_Serializer(const char* db_spec)
     if ((sqlite3_open(db_spec, &m_db) != SQLITE_OK)) {
         throw runtime_error(string(sqlite3_errmsg(m_db)));
     }
-    m_query.str(ITEM_DDL);
-    prepare(0);
-    step();
-
-    m_query.str(TAG_DDL);
-    prepare(0);
-    step();
-
-    m_query.str(ITEM_TAG_DDL);
-    prepare(0);
-    step();
-
-    m_query.str(FKEYS_ON);
-    prepare(0);
-    step();
+    begin_transaction();
+    exec(ITEM_DDL);
+    exec(TAG_DDL);
+    exec(ITEM_TAG_DDL);
+    exec(TRASH_DDL);
+    exec(FKEYS_ON);
+    end_transaction();
 }
 
 //--------------------------------------------------------------------------------
@@ -132,11 +179,13 @@ void SQLite3_Serializer::write(Item& record)
 void SQLite3_Serializer::insert(Item& record) 
     throw(runtime_error) {
 
-    m_query.str("INSERT INTO Item(Title, Content) VALUES(?, ?);");
-    prepare(2, record.title.c_str(), record.content.c_str());
+    begin_transaction();
+    m_query.str("INSERT INTO Item(Title, Content, Timestamp) VALUES(?, ?, ?);");
+    prepare(3, record.title.c_str(), record.content.c_str(), SQLITE_DATE);
     step();
     record.id = sqlite3_last_insert_rowid(m_db);
     write_tags(record);
+    end_transaction();
 }
 
 //--------------------------------------------------------------------------------
@@ -196,15 +245,17 @@ void SQLite3_Serializer::insert_itemtag(const int& item_id, const int& tag_id)
 void SQLite3_Serializer::update(const Item& record) 
     throw(runtime_error) {
 
+    begin_transaction();
     m_query.str("");
-    m_query << "UPDATE Item set Title = ?, Content = ? WHERE ItemID = " 
-            << record.id << ";";
+    m_query << "UPDATE Item set Title = ?, Content = ?, Timestamp = ? "
+               "WHERE ItemID = " << record.id << ";";
 
-    prepare(2, record.title.c_str(), record.content.c_str());
+    prepare(3, record.title.c_str(), record.content.c_str(), SQLITE_DATE);
     step();
     
     delete_itemtags(record);
     write_tags(record);
+    end_transaction();
 }
 
 //--------------------------------------------------------------------------------
@@ -315,6 +366,45 @@ void SQLite3_Serializer::read(const vector<string>& tags,
             );
         }
     }
+}
+
+//--------------------------------------------------------------------------------
+// Move the item i, from the Item table to the TrashItem table and timestamp the
+// transaction
+// @pre  The parameter record is assumed to contain the most recent data of the
+//       item.
+// @post The data in the record is inserted into the trash table, removed from
+//       the item table, and its tag relations removed from itemtags
+// @note Currently tag relations are not preserved for trashed items (mainly due
+//       to laziness). The tags are however stored as a space separated string
+//       in the trash item table, so you can parse them and restore them if need
+//       be.
+//--------------------------------------------------------------------------------
+void SQLite3_Serializer::trash(const Item& record) 
+    throw(runtime_error) {
+
+    begin_transaction();
+
+    m_query.str("");
+    m_query << "DELETE FROM Item WHERE ItemID = "    << record.id << "; ";
+
+    prepare(0);
+    step();
+
+    m_query.str("");
+    m_query << "DELETE FROM ItemTag WHERE ItemID = " << record.id << ";";
+    prepare(0);
+    step();
+
+    m_query.str("");
+    m_query << "INSERT INTO TrashItem(Title, Content, Tags, Timestamp) "
+               "VALUES(?, ?, ?, " << SQLITE_DATE << ");";
+
+    prepare(3, record.title.c_str(), record.content.c_str(), 
+                                     tags2tag_str(record.tags));
+    step();
+
+    end_transaction();
 }
 
 //--------------------------------------------------------------------------------

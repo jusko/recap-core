@@ -48,6 +48,14 @@ class SQLite3_Serializer : public Serializer {
             throw(std::runtime_error);
         
         //---------------------------------------------------------------------
+        // @param i The item to be deleted
+        // @pre     The item exists in the Item table.
+        // @post    The item is moved to the TrashItem table.
+        //---------------------------------------------------------------------
+        virtual void trash(const Item& i) 
+            throw(std::runtime_error);
+        
+        //---------------------------------------------------------------------
         // @param tags Out vector of tag strings
         // @post  All tags stored in the DB are loaded into the out vector.
         // @throw If errors occur querying the DB.
@@ -56,7 +64,11 @@ class SQLite3_Serializer : public Serializer {
             throw(std::runtime_error);
 
     private:
+        // Helper functions
         int  step()                                 throw(std::runtime_error);
+        void exec(const char*)                      throw(std::runtime_error);
+        void begin_transaction()                    throw(std::runtime_error);
+        void end_transaction()                      throw(std::runtime_error);
         void prepare(int, ...)                      throw(std::runtime_error);
         void insert(Item&)                          throw(std::runtime_error);
         void update(const Item&)                    throw(std::runtime_error);
