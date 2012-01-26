@@ -24,10 +24,11 @@ class Serializer {
         //---------------------------------------------------------------------
         // @param i The Item to be written.
         // @pre   The Item has no blank or empty fields.
-        // @post  The Item is serialized and stored.
+        // @post  The Item is serialized and a new Item is created or an
+        //        existing Item is updated.
         // @throw If errors occur writing the Item.
         //---------------------------------------------------------------------
-        virtual void write(const Item&) 
+        virtual void write(Item& i) 
             throw(std::runtime_error) = 0;
 
         //---------------------------------------------------------------------

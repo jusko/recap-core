@@ -17,6 +17,7 @@ void parse_tags(const char* in_tags, vector<string>& out_list);
 //------------------------------------------------------------------------------
 int main(int argc, char** argv) {
     if (argc < 3 || (strcmp(argv[2], "-c") && 
+                     strcmp(argv[2], "-u") &&
                      strcmp(argv[2], "-r") && strcmp(argv[2], "-t"))) {
         usage(argv);
         return 1;
@@ -74,6 +75,36 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        // Big dirty hack: The way this is going you probably want to knock up a unit
+        //                 test suite for the core (even though unit tests *suck*).
+        else if (strcmp(argv[2], "-u") == 0) {
+            if (argc != 7) {
+                usage(argv);
+                return 1;
+            }
+            vector<string> all_tags;
+            sr->tags(all_tags);
+            sr->read(all_tags, items);
+
+            Item* the_item = 0;
+            for (size_t i = 0; i < items.size(); ++i) {
+                if (strcmp(items[i]->title.c_str(), argv[3]) == 0) {
+                    the_item = items[i];
+                    break;
+                }
+            }
+            if (!the_item) {
+                cout << "The item was not found" << endl;
+                return 1;
+            }
+
+            parse_tags(argv[6], tags);
+
+            the_item->title   = argv[4];
+            the_item->content = argv[5];
+            the_item->tags    = tags;
+            sr->write(*the_item);
+        }
     }
     catch(const exception& e) {
         cout << e.what() << endl;
@@ -98,8 +129,9 @@ void cleanup(vector<Item*>& items) {
 //------------------------------------------------------------------------------
 void usage(char** argv) {
     cout << "Usage: " << argv[0] 
-         << " DATABASE [-c 'TITLE' 'CONTENT' 'TAG1, TAG2, ...'"
-            " | -r 'TAG1, TAG2, ...'] | -t"
+         << "\tDATABASE\n\t\t\t[ -c 'TITLE' 'CONTENT' 'TAG1, TAG2, ...] |\n'"
+            "\t\t\t[ -r 'TAG1, TAG2, ...'] | \n\t\t\t[ -t ] | "
+            "\n\t\t\t[ -u 'OLD_TITLE' 'NEW_TITLE' 'NEW_CONTENT' 'TAG1, TAG2, ...'"
          << endl;
 }
 

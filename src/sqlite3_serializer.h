@@ -26,11 +26,13 @@ class SQLite3_Serializer : public Serializer {
 
         //----------------------------------------------------------------------
         // @param i The Item to be written.
-        // @pre   The Item has blank or empty fields.
-        // @post  The Item is serialized and stored.
+        // @pre   The Item has no blank or empty fields.
+        // @post  The Item is serialized and a new Item is created or an
+        //        existing Item is updated. If a new item is created,
+        //        the Item parameter has its id field updated.
         // @throw If cannot write through the DB connection.
         //----------------------------------------------------------------------
-        virtual void write(const Item&) 
+        virtual void write(Item& i) 
             throw(std::runtime_error);
 
         //----------------------------------------------------------------------
@@ -54,8 +56,13 @@ class SQLite3_Serializer : public Serializer {
             throw(std::runtime_error);
 
     private:
-        void prepare(int, ...) throw(std::runtime_error);
-        int  step()            throw(std::runtime_error);
+        int  step()                                 throw(std::runtime_error);
+        void prepare(int, ...)                      throw(std::runtime_error);
+        void insert(Item&)                          throw(std::runtime_error);
+        void update(const Item&)                    throw(std::runtime_error);
+        void write_tags(const Item&)                throw(std::runtime_error);
+        void delete_itemtags(const Item&)           throw(std::runtime_error);
+        void insert_itemtag(const int&, const int&) throw(std::runtime_error);
 
         sqlite3*      m_db;
         sqlite3_stmt* m_statement;

@@ -1,6 +1,7 @@
 #include "sqlite3_serializer.h"
 #include <sqlite3.h>
 #include <string>
+#include <set>
 #include <cstring>
 using namespace std;
 
@@ -112,37 +113,141 @@ SQLite3_Serializer::~SQLite3_Serializer() {
 }
 
 //--------------------------------------------------------------------------------
-// Add an Item, Tags and ItemTags to the database.
+// Inserts or updates an existing item.
 //--------------------------------------------------------------------------------
-void SQLite3_Serializer::write(const Item& record) 
+void SQLite3_Serializer::write(Item& record) 
     throw(runtime_error) {
 
-    // First insert the Item and hold onto its ID for the ItemTag insert
+    if (record.id == 0) {
+        insert(record);
+    }
+    else {
+        update(record);
+    }
+}
+
+//--------------------------------------------------------------------------------
+// Inserts an Item, Tags and all ItemTags to the database,
+//--------------------------------------------------------------------------------
+void SQLite3_Serializer::insert(Item& record) 
+    throw(runtime_error) {
+
     m_query.str("INSERT INTO Item(Title, Content) VALUES(?, ?);");
     prepare(2, record.title.c_str(), record.content.c_str());
     step();
-    sqlite3_int64 item_id = sqlite3_last_insert_rowid(m_db);
+    record.id = sqlite3_last_insert_rowid(m_db);
+    write_tags(record);
+}
 
-    // Then, for each tag, get its ID if it already exists, else add it and hold 
-    // on to the new ID. After that, insert an ItemTag with the corresponding
-    // ItemID and TagID.
+//--------------------------------------------------------------------------------
+// For each tag, insert it and associate it if it is new, else check if an
+// association exists with the current item and insert it if it doesn't.
+//--------------------------------------------------------------------------------
+void SQLite3_Serializer::write_tags(const Item& record) 
+    throw(runtime_error) {
+
     for (size_t i = 0; i < record.tags.size(); ++i) {
-        m_query.str("SELECT TagId from Tag where Title = ?;");
-        const string& current_tag = record.tags[i];
-        prepare(1, current_tag.c_str());
+        const char* current_tag = record.tags[i].c_str();
+
+        m_query.str("SELECT TagID from Tag WHERE Title = ?;");
+        prepare(1, current_tag);
         step();
 
-        // TODO: downcase all tag entries
         int tag_id = sqlite3_column_int(m_statement, 0);
-        m_query.str( "INSERT INTO Tag(Title) VALUES(?);");
         if (tag_id == 0) {
-            prepare(1, current_tag.c_str());
+            m_query.str( "INSERT INTO Tag(Title) VALUES(?);");
+            prepare(1, current_tag);
             step();
             tag_id = sqlite3_last_insert_rowid(m_db);
+            insert_itemtag(record.id, tag_id);
         }
+        else {
+            m_query.str("");
+            m_query << "SELECT ID from ItemTag "
+                       "WHERE ItemID = " << record.id <<
+                       " AND   TagID =  " << tag_id << ";";
+
+            prepare(0);
+            step();
+
+            if (sqlite3_column_int(m_statement, 0) == 0) {
+                insert_itemtag(record.id, tag_id);
+            }
+        }
+    }
+}
+
+//--------------------------------------------------------------------------------
+// Inserts a relation between an Item and a Tag into the ItemTag table.
+//--------------------------------------------------------------------------------
+void SQLite3_Serializer::insert_itemtag(const int& item_id, const int& tag_id) 
+    throw(runtime_error) {
+
+    m_query.str("");
+    m_query << "INSERT INTO ItemTag(ItemID, TagID) VALUES(" << item_id << "," 
+                                                            << tag_id << ");";
+    prepare(0);
+    step();
+}
+
+//--------------------------------------------------------------------------------
+// Updates an existing item as well as all tag relations
+//--------------------------------------------------------------------------------
+void SQLite3_Serializer::update(const Item& record) 
+    throw(runtime_error) {
+
+    m_query.str("");
+    m_query << "UPDATE Item set Title = ?, Content = ? WHERE ItemID = " 
+            << record.id << ";";
+
+    prepare(2, record.title.c_str(), record.content.c_str());
+    step();
+    
+    delete_itemtags(record);
+    write_tags(record);
+}
+
+//--------------------------------------------------------------------------------
+// For each existing tag associated with the item, remove the relation if the 
+// item is no longer associated with the tag.
+//--------------------------------------------------------------------------------
+#include <iostream>
+void SQLite3_Serializer::delete_itemtags(const Item& record)
+    throw(runtime_error) {
+    
+    // Put the items's tags into a set to check more efficiently whether 
+    // or not each tag in the DB has a relation to the item.
+    // NOTE: This suggests a set would be a better datastructure to use
+    //       for the Item data type. That way you're guaranteed no duplicates.
+    set<const char*> tag_set;
+    vector<int> delete_cache;
+    for (size_t i = 0; i < record.tags.size(); ++i) {
+        tag_set.insert(record.tags[i].c_str());
+    }
+
+    m_query.str("");
+    m_query << "SELECT Title, ID from Tag "
+               "JOIN (SELECT * FROM ItemTag WHERE ItemID = " << record.id << ") "
+                     "AS OldRelations "
+               "ON Tag.TagID = OldRelations.TagID;";
+    prepare(0);
+
+    while (step() == SQLITE_ROW) {
+        cout << "col: " << sqlite3_column_int(m_statement, 1) << "\ttag: " << 
+                reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 0)) << endl;
+
+        if (tag_set.find(
+                reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 0))
+            ) == tag_set.end()) {
+            cout << "FOUND" << endl;
+
+            delete_cache.push_back(sqlite3_column_int(m_statement, 1));
+        }
+    }
+    for (size_t i = 0; i < delete_cache.size(); ++i) {
+        cout << "Delete ID: " << delete_cache[i] << endl;
         m_query.str("");
-        m_query << "INSERT INTO ItemTag(ItemID, TagID) VALUES(" << item_id << "," 
-                                                                << tag_id << ");";
+        m_query << "DELETE FROM ItemTag WHERE ID = " << delete_cache[i];
         prepare(0);
         step();
     }
@@ -161,7 +266,7 @@ void SQLite3_Serializer::read(const vector<string>& tags,
     // TODO: Add option for matching all or one of the tags
     // Select all items matching the tags
     m_query.str("");
-    m_query << "SELECT DISTINCT Title, Content FROM Item "
+    m_query << "SELECT DISTINCT Item.ItemID, Item.Title, Item.Content FROM Item "
                "JOIN ItemTag "
                     "ON Item.ItemID = ItemTag.ItemID "
                "WHERE ItemTag.TagID IN "
@@ -190,11 +295,13 @@ void SQLite3_Serializer::read(const vector<string>& tags,
         out_items.push_back(new Item);
         Item& item = *out_items.back();
 
+        item.id = sqlite3_column_int(m_statement, 0);
+
         item.title = 
-            reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 0));
+            reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 1));
 
         item.content = 
-            reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 1));
+            reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 2));
     }
 
     // Select the tags for each item
