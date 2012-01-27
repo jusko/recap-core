@@ -180,8 +180,10 @@ void SQLite3_Serializer::insert(Item& record)
     throw(runtime_error) {
 
     begin_transaction();
-    m_query.str("INSERT INTO Item(Title, Content, Timestamp) VALUES(?, ?, ?);");
-    prepare(3, record.title.c_str(), record.content.c_str(), SQLITE_DATE);
+    m_query.str("");
+    m_query << "INSERT INTO Item(Title, Content, Timestamp) VALUES(?, ?, " 
+            << SQLITE_DATE << ");";
+    prepare(2, record.title.c_str(), record.content.c_str());
     step();
     record.id = sqlite3_last_insert_rowid(m_db);
     write_tags(record);
@@ -247,10 +249,10 @@ void SQLite3_Serializer::update(const Item& record)
 
     begin_transaction();
     m_query.str("");
-    m_query << "UPDATE Item set Title = ?, Content = ?, Timestamp = ? "
-               "WHERE ItemID = " << record.id << ";";
+    m_query << "UPDATE Item set Title = ?, Content = ?, Timestamp = " 
+            << SQLITE_DATE << " WHERE ItemID = " << record.id << ";";
 
-    prepare(3, record.title.c_str(), record.content.c_str(), SQLITE_DATE);
+    prepare(2, record.title.c_str(), record.content.c_str());
     step();
     
     delete_itemtags(record);
