@@ -13,7 +13,8 @@ using namespace std;
                         "Timestamp TEXT);"
 
 #define TAG_DDL      "CREATE TABLE IF NOT EXISTS Tag("\
-                        "TagID INTEGER PRIMARY KEY, Title TEXT UNIQUE);"
+                        "TagID INTEGER PRIMARY KEY, "\
+                        "Title TEXT UNIQUE COLLATE NOCASE);"
 
 #define ITEM_TAG_DDL "CREATE TABLE IF NOT EXISTS ItemTag("\
                         "ID INTEGER PRIMARY KEY, ItemID INTEGER, TagID INTEGER, "\
