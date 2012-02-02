@@ -3,4 +3,5 @@
 core-tester
 *.db
 *.~
-sqlite3_serializer.o
+*.o
+regression_tests
