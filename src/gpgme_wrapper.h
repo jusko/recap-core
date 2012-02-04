@@ -17,6 +17,8 @@ class GPGME_Wrapper {
     public:
 
         //---------------------------------------------------------------------
+        // @pre    GPG backend is installed and GPG Agent is configured
+        //         correctly
         // @post   If GPG is present, keys on a system are loaded and can be 
         //         retreived by invoking the all_keys() function.
         // @throw  If GPGME could not be initialised or if errors occurred 

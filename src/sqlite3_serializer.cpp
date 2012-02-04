@@ -10,7 +10,7 @@ using namespace std;
 //--------------------------------------------------------------------------------
 #define ITEM_DDL     "CREATE TABLE IF NOT EXISTS Item("\
                         "ItemID INTEGER PRIMARY KEY, Title TEXT, Content TEXT, "\
-                        "Timestamp TEXT);"
+                        "Encrypted INTEGER, Timestamp TEXT);"
 
 #define TAG_DDL      "CREATE TABLE IF NOT EXISTS Tag("\
                         "TagID INTEGER PRIMARY KEY, "\
@@ -23,7 +23,7 @@ using namespace std;
 
 #define TRASH_DDL    "CREATE TABLE IF NOT EXISTS TrashItem("\
                         "ItemID INTEGER PRIMARY KEY, Title TEXT, Content TEXT, "\
-                        "Tags TEXT, Timestamp TEXT);"
+                        "Tags TEXT, Encrypted INTEGER, Timestamp TEXT);"
 
 #define FKEYS_ON     "PRAGMA foreign_keys = ON;"
 
@@ -182,8 +182,8 @@ void SQLite3_Serializer::insert(Item& record)
 
     begin_transaction();
     m_query.str("");
-    m_query << "INSERT INTO Item(Title, Content, Timestamp) VALUES(?, ?, " 
-            << SQLITE_DATE << ");";
+    m_query << "INSERT INTO Item(Title, Content, Encrypted, Timestamp) "
+               "VALUES(?, ?, " << record.encrypted << ", " << SQLITE_DATE << ");";
     prepare(2, record.title.c_str(), record.content.c_str());
     step();
     record.id = sqlite3_last_insert_rowid(m_db);
@@ -250,8 +250,9 @@ void SQLite3_Serializer::update(const Item& record)
 
     begin_transaction();
     m_query.str("");
-    m_query << "UPDATE Item set Title = ?, Content = ?, Timestamp = " 
-            << SQLITE_DATE << " WHERE ItemID = " << record.id << ";";
+    m_query << "UPDATE Item set Title = ?, Content = ?, Encrypted = " 
+            << record.encrypted << ", Timestamp = " << SQLITE_DATE 
+            << " WHERE ItemID = " << record.id << ";";
 
     prepare(2, record.title.c_str(), record.content.c_str());
     step();
@@ -315,7 +316,9 @@ void SQLite3_Serializer::read(const vector<string>& tags,
     // TODO: Add option for matching all or one of the tags
     // Select all items matching the tags
     m_query.str("");
-    m_query << "SELECT DISTINCT Item.ItemID, Item.Title, Item.Content FROM Item "
+    m_query << "SELECT DISTINCT Item.ItemID, Item.Title, Item.Content, "
+                               "Item.Encrypted, Item.Timestamp "
+               "FROM Item "
                "JOIN ItemTag "
                     "ON Item.ItemID = ItemTag.ItemID "
                "WHERE ItemTag.TagID IN "
@@ -351,6 +354,11 @@ void SQLite3_Serializer::read(const vector<string>& tags,
 
         item.content = 
             reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 2));
+
+        item.encrypted = sqlite3_column_int(m_statement, 3);
+
+        item.timestamp = 
+            reinterpret_cast<const char*>(sqlite3_column_text(m_statement, 4));
     }
 
     // Select the tags for each item
@@ -400,8 +408,9 @@ void SQLite3_Serializer::trash(const Item& record)
     step();
 
     m_query.str("");
-    m_query << "INSERT INTO TrashItem(Title, Content, Tags, Timestamp) "
-               "VALUES(?, ?, ?, " << SQLITE_DATE << ");";
+    m_query << "INSERT INTO TrashItem(Title, Content, Tags, Encrypted, Timestamp)"
+               " VALUES(?, ?, ?, " << record.encrypted << ", " 
+                                   << SQLITE_DATE << ");";
 
     prepare(3, record.title.c_str(), record.content.c_str(), 
                                      tags2tag_str(record.tags));

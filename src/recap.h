@@ -8,8 +8,10 @@
 //------------------------------------------------------------------------------
 struct Item {
     int id;
+    bool encrypted;
     std::string title;
     std::string content;
+    std::string timestamp;
     std::vector<std::string> tags;
 };
 

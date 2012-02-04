@@ -58,10 +58,11 @@ inline string GPGME_Wrapper::gpgme_data2str(const gpgme_data_t buffer)
 // Creates a human readible string identifying a GPG key
 //-----------------------------------------------------------------------------
 inline string key2str(const gpgme_key_t key) {
-    return string(key->subkeys->keyid).append(" ")
+    return string(key->subkeys->keyid).append("\t")
                                       .append(key->uids->name)
-                                      .append(" ")
-                                      .append(key->uids->email);
+                                      .append(" (")
+                                      .append(key->uids->email)
+                                      .append(")");
 }
 
 //-----------------------------------------------------------------------------
@@ -75,6 +76,7 @@ GPGME_Wrapper::GPGME_Wrapper()
 
     : m_context(0) {
 
+    // TODO: check PGP engine, check GPG Agent 
     // Set locale
     setlocale (LC_ALL, "");
     gpgme_check_version (NULL);
@@ -99,9 +101,11 @@ GPGME_Wrapper::GPGME_Wrapper()
         if (m_error != GPG_ERR_NO_ERROR) {
             break;
         }
-        m_keys.insert(
-             pair<string, gpgme_key_t>(key2str(key), key)
-        );
+        if (!key->revoked && !key->expired && key->can_encrypt) {
+            m_keys.insert(
+                 pair<string, gpgme_key_t>(key2str(key), key)
+            );
+        }
     }
     // All binary is text encoded for DB persistence
     gpgme_set_armor(m_context, 1);
