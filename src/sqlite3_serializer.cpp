@@ -52,6 +52,9 @@ const char* tags2tag_str(const vector<string>& tags) {
 inline void SQLite3_Serializer::prepare(int count, ...) 
     throw(runtime_error) {
 
+    if (sqlite3_finalize(m_statement) != SQLITE_OK) {
+        throw runtime_error(sqlite3_errmsg(m_db));
+    }
     if (sqlite3_prepare_v2(
         m_db,
         m_query.str().c_str(),
@@ -266,7 +269,6 @@ void SQLite3_Serializer::update(const Item& record)
 // For each existing tag associated with the item, remove the relation if the 
 // item is no longer associated with the tag.
 //--------------------------------------------------------------------------------
-#include <iostream>
 void SQLite3_Serializer::delete_itemtags(const Item& record)
     throw(runtime_error) {
     
@@ -313,6 +315,7 @@ void SQLite3_Serializer::read(const vector<string>& tags,
     if (tags.empty()) {
         return;
     }
+    begin_transaction();
     // TODO: Add option for matching all or one of the tags
     // Select all items matching the tags
     m_query.str("");
@@ -377,6 +380,7 @@ void SQLite3_Serializer::read(const vector<string>& tags,
             );
         }
     }
+    end_transaction();
 }
 
 //--------------------------------------------------------------------------------
